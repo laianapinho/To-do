@@ -8,21 +8,36 @@ import kotlinx.coroutines.flow.map
 
 class TaskRepository(
     private val dao: TaskDao
-) {
-    fun observeAll(): Flow<List<TodoTask>> {
-        return dao.observeAll().map { list -> list.map { it.toDomain() } }
+) : TaskRepositoryContract {
+
+    override fun observeAll(): Flow<List<TodoTask>> {
+        return dao.observeAll().map { list ->
+            list.map { it.toDomain() }
+        }
     }
 
-    suspend fun add(title: String) {
+    override suspend fun add(title: String) {
         dao.insert(TaskEntity(title = title, done = false))
     }
 
-    suspend fun toggleDone(task: TodoTask) {
-        dao.update(TaskEntity(id = task.id, title = task.title, done = !task.done))
+    override suspend fun toggleDone(task: TodoTask) {
+        dao.update(
+            TaskEntity(
+                id = task.id,
+                title = task.title,
+                done = !task.done
+            )
+        )
     }
 
-    suspend fun delete(task: TodoTask) {
-        dao.delete(TaskEntity(id = task.id, title = task.title, done = task.done))
+    override suspend fun delete(task: TodoTask) {
+        dao.delete(
+            TaskEntity(
+                id = task.id,
+                title = task.title,
+                done = task.done
+            )
+        )
     }
 }
 

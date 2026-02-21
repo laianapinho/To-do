@@ -1,6 +1,6 @@
 package br.edu.icomp.to_do.ui
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +19,7 @@ import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.SwipeToDismiss
 import androidx.compose.material.rememberDismissState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import br.edu.icomp.to_do.model.TodoTask
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -57,6 +59,7 @@ fun TodoScreen(
 
     val state by viewModel.uiState.collectAsState()
     val currentFilter by viewModel.filter.collectAsState()
+    val query by viewModel.query.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -95,6 +98,24 @@ fun TodoScreen(
 
             Spacer(Modifier.height(12.dp))
 
+            // 🔎 Busca (Dia 6)
+            OutlinedTextField(
+                value = query,
+                onValueChange = { viewModel.updateQuery(it) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Buscar tarefa") },
+                singleLine = true,
+                trailingIcon = {
+                    if (query.isNotBlank()) {
+                        IconButton(onClick = { viewModel.updateQuery("") }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Limpar busca")
+                        }
+                    }
+                }
+            )
+
+            Spacer(Modifier.height(12.dp))
+
             // Filtros
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
@@ -118,7 +139,7 @@ fun TodoScreen(
 
             when (val s = state) {
                 is UiState.Loading -> Text("Carregando...")
-                is UiState.Empty -> Text("Nenhuma tarefa ainda 🙂")
+                is UiState.Empty -> Text("Nenhuma tarefa encontrada 🙂")
                 is UiState.Error -> Text("Erro: ${s.message}")
 
                 is UiState.Success -> {
@@ -131,24 +152,14 @@ fun TodoScreen(
                             val dismissState = rememberDismissState(
                                 confirmStateChange = { value ->
                                     if (value == DismissValue.DismissedToStart) {
-                                        // deletar + snackbar undo
-                                        viewModel.deleteTask(task)
-
-                                        scope.launch {
-                                            val result = snackbarHostState.showSnackbar(
-                                                message = "Tarefa excluída",
-                                                actionLabel = "Desfazer",
-                                                withDismissAction = true,
-                                                duration = SnackbarDuration.Short
-                                            )
-                                            if (result == SnackbarResult.ActionPerformed) {
-                                                viewModel.undoDelete()
-                                            }
-                                        }
+                                        doDeleteWithUndo(
+                                            viewModel = viewModel,
+                                            snackbarHostState = snackbarHostState,
+                                            scope = scope,
+                                            task = task
+                                        )
                                         true
-                                    } else {
-                                        false
-                                    }
+                                    } else false
                                 }
                             )
 
@@ -156,7 +167,6 @@ fun TodoScreen(
                                 state = dismissState,
                                 directions = setOf(DismissDirection.EndToStart),
                                 background = {
-                                    // fundo ao arrastar
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
@@ -172,19 +182,14 @@ fun TodoScreen(
                                         done = task.done,
                                         onToggle = { viewModel.toggleDone(task) },
                                         onDelete = {
-                                            viewModel.deleteTask(task)
-                                            scope.launch {
-                                                val result = snackbarHostState.showSnackbar(
-                                                    message = "Tarefa excluída",
-                                                    actionLabel = "Desfazer",
-                                                    withDismissAction = true,
-                                                    duration = SnackbarDuration.Short
-                                                )
-                                                if (result == SnackbarResult.ActionPerformed) {
-                                                    viewModel.undoDelete()
-                                                }
-                                            }
-                                        }
+                                            doDeleteWithUndo(
+                                                viewModel = viewModel,
+                                                snackbarHostState = snackbarHostState,
+                                                scope = scope,
+                                                task = task
+                                            )
+                                        },
+                                        modifier = Modifier.animateContentSize()
                                     )
                                 }
                             )
@@ -196,29 +201,45 @@ fun TodoScreen(
     }
 }
 
+private fun doDeleteWithUndo(
+    viewModel: TodoViewModel,
+    snackbarHostState: SnackbarHostState,
+    scope: CoroutineScope,
+    task: TodoTask
+) {
+    viewModel.deleteTask(task)
+
+    scope.launch {
+        val result = snackbarHostState.showSnackbar(
+            message = "Tarefa excluída",
+            actionLabel = "Desfazer",
+            withDismissAction = true,
+            duration = SnackbarDuration.Short
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.undoDelete()
+        }
+    }
+}
+
 @Composable
 private fun TaskRow(
     title: String,
     done: Boolean,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Card {
+    Card(modifier = modifier) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Checkbox(
-                checked = done,
-                onCheckedChange = { onToggle() }
-            )
+            Checkbox(checked = done, onCheckedChange = { onToggle() })
             Spacer(Modifier.width(8.dp))
-            Text(
-                text = title,
-                modifier = Modifier.weight(1f)
-            )
+            Text(text = title, modifier = Modifier.weight(1f))
             IconButton(onClick = onDelete) {
                 Icon(Icons.Filled.Delete, contentDescription = "Excluir")
             }
